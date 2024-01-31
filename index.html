@@ -52,6 +52,11 @@
         }
       }
       
+      // Reduce the total to a single digit
+      while (total > 9) {
+        total = total.toString().split('').reduce((acc, digit) => acc + parseInt(digit), 0);
+      }
+      
       document.getElementById('output').innerText = `Total numerical value of your name is: ${total}`;
     }
   </script>
