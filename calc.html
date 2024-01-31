@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Indian Numerology Calculator</title>
+</head>
+<body>
+  <h1>Indian Numerology Calculator</h1>
+  
+  <label for="nameInput">Enter your name:</label>
+  <input type="text" id="nameInput">
+  <button onclick="calculateTotal()">Calculate</button>
+  
+  <div id="output"></div>
+  
+  <script>
+    function calculateTotal() {
+      const name = document.getElementById('nameInput').value.toUpperCase();
+      let total = 0;
+      
+      for (let i = 0; i < name.length; i++) {
+        const char = name.charAt(i);
+        switch (char) {
+          case 'A': case 'I': case 'J': case 'Q': case 'Y':
+            total += 1;
+            break;
+          case 'B': case 'K': case 'R':
+            total += 2;
+            break;
+          case 'C': case 'G': case 'L': case 'S':
+            total += 3;
+            break;
+          case 'D': case 'M': case 'T':
+            total += 4;
+            break;
+          case 'E': case 'H': case 'N': case 'X':
+            total += 5;
+            break;
+          case 'U': case 'V': case 'W':
+            total += 6;
+            break;
+          case 'O': case 'Z':
+            total += 7;
+            break;
+          case 'F': case 'P':
+            total += 8;
+            break;
+          default:
+            // Ignore characters not in the table
+            break;
+        }
+      }
+      
+      document.getElementById('output').innerText = `Total numerical value of your name is: ${total}`;
+    }
+  </script>
+</body>
+</html>
