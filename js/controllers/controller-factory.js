@@ -5,9 +5,6 @@ import DS5Controller from './ds5-controller.js';
 import DS5EdgeController from './ds5-edge-controller.js';
 import { dec2hex } from '../utils.js';
 
-/**
-* Controller Factory - Creates the appropriate controller instance based on device type
-*/
 class ControllerFactory {
   static getSupportedModels() {
     const ds4v1 = { vendorId: 0x054c, productId: 0x05c4 };
@@ -17,22 +14,16 @@ class ControllerFactory {
     return [ds4v1, ds4v2, ds5, ds5edge];
   }
 
-
-  /**
-  * Create a controller instance based on the HID device product ID
-  * @param {HIDDevice} device The HID device
-  * @returns {BaseController} The appropriate controller instance
-  */
   static createControllerInstance(device) {
     switch (device.productId) {
-      case 0x05c4: // DS4 v1
-      case 0x09cc: // DS4 v2
+      case 0x05c4:
+      case 0x09cc:
         return new DS4Controller(device);
 
-      case 0x0ce6: // DS5
+      case 0x0ce6:
         return new DS5Controller(device);
 
-      case 0x0df2: // DS5 Edge
+      case 0x0df2:
         return new DS5EdgeController(device);
 
       default:
@@ -40,11 +31,6 @@ class ControllerFactory {
     }
   }
 
-  /**
-  * Get device name based on product ID
-  * @param {number} productId Product ID
-  * @returns {string} Device name
-  */
   static getDeviceName(productId) {
     switch (productId) {
       case 0x05c4:
@@ -59,45 +45,6 @@ class ControllerFactory {
         return "Unknown Device";
     }
   }
-
-  /**
-  * Get UI configuration based on product ID
-  * @param {number} productId Product ID
-  * @returns {Object} UI configuration
-  */
-  static getUIConfig(productId) {
-    switch (productId) {
-      case 0x05c4: // DS4 v1
-      case 0x09cc: // DS4 v2
-        return { 
-          showInfo: false, 
-          showFinetune: false, 
-          showInfoTab: false,
-          showFourStepCalib: true,
-          showQuickCalib: false
-        };
-
-      case 0x0ce6: // DS5
-      case 0x0df2: // DS5 Edge
-        return { 
-          showInfo: true, 
-          showFinetune: true, 
-          showInfoTab: true,
-          showFourStepCalib: false,
-          showQuickCalib: true
-        };
-
-      default:
-        return { 
-          showInfo: false, 
-          showFinetune: false, 
-          showInfoTab: false,
-          showFourStepCalib: false,
-          showQuickCalib: false
-        };
-    }
-  }
 }
 
-// Export for use in other modules
 export default ControllerFactory;

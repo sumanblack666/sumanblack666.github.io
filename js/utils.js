@@ -81,21 +81,6 @@ export function reverse_str(s) {
   return s.split('').reverse().join('');
 }
 
-export let la = undefined;
-export function lf(operation, data) { la(operation, buf2hex(data.buffer)); return data; }
-
-export function initAnalyticsApi({gj, gu}) {
-  la = (k, v = {}) => {
-    $.ajax({
-      type: 'POST', 
-      url: "https://the.al/ds4_a/l",
-      data: JSON.stringify({u: gu, j: gj, k, v}),
-      contentType: "application/json", 
-      dataType: 'json'
-    });
-  }
-}
-
 export function lerp_color(a, b, t) {
   // a, b: hex color strings, t: 0.0-1.0
   function hex2rgb(hex) {
@@ -115,41 +100,4 @@ export function lerp_color(a, b, t) {
     Math.round(c1[2] + (c2[2] - c1[2]) * t)
   ];
   return rgb2hex(c[0], c[1], c[2]);
-}
-
-/**
-* Create a cookie with specified name, value, and expiration days
-* @param {string} name Cookie name
-* @param {string} value Cookie value
-* @param {number} days Number of days until expiration
-*/
-export function createCookie(name, value, days) {
-  const expires = days ? "; expires=" + new Date(Date.now() + days * 24 * 60 * 60 * 1000).toGMTString() : "";
-  document.cookie = encodeURIComponent(name) + "=" + encodeURIComponent(value) + expires + "; path=/";
-}
-
-/**
-* Read a cookie value by name
-* @param {string} name Cookie name
-* @returns {string|null} Cookie value or null if not found
-*/
-export function readCookie(name) {
-  const nameEQ = encodeURIComponent(name) + "=";
-  const ca = document.cookie.split(';');
-  for (let i = 0; i < ca.length; i++) {
-    let c = ca[i];
-    while (c.charAt(0) === ' ')
-      c = c.substring(1, c.length);
-    if (c.indexOf(nameEQ) === 0)
-      return decodeURIComponent(c.substring(nameEQ.length, c.length));
-  }
-  return null;
-}
-
-/**
-* Delete a cookie by setting its expiration to the past
-* @param {string} name Cookie name to delete
-*/
-export function eraseCookie(name) {
-  createCookie(name, "", -1);
 }

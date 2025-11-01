@@ -1,14 +1,54 @@
 'use strict';
 
-import { sleep, float_to_str } from './utils.js';
+import { sleep, float_to_str, dec2hex } from './utils.js';
 import { initControllerManager } from './controller-manager.js';
 import ControllerFactory from './controllers/controller-factory.js';
 import { draw_stick_position, CIRCULARITY_DATA_SIZE } from './stick-renderer.js';
 
+// Application State - manages app-wide state and UI
+const app = {
+  // Button disable state management
+  disable_btn: 0,
+  last_disable_btn: 0,
+
+  shownRangeCalibrationWarning: false,
+};
+
+const ll_data = new Array(CIRCULARITY_DATA_SIZE);
+const rr_data = new Array(CIRCULARITY_DATA_SIZE);
+
 let controller = null;
 
 function gboot() {
-  // Check for WebHID support
+  async function initializeApp() {
+    window.addEventListener("error", (event) => {
+      console.error(event.error?.stack || event.message);
+      alert(event.error?.message || event.message);
+    });
+
+    window.addEventListener("unhandledrejection", async (event) => {
+      console.error("Unhandled rejection:", event.reason?.stack || event.reason);
+      let errorMessage = "An unexpected error occurred";
+      if (event.reason) {
+        if (event.reason.message) {
+          errorMessage = `Error: ${event.reason.message}`;
+        } else if (typeof event.reason === 'string') {
+          errorMessage = `Error: ${event.reason}`;
+        }
+      }
+      alert(errorMessage);
+      event.preventDefault();
+    });
+
+    $("input[name='displayMode']").on('change', on_stick_mode_change);
+  }
+
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initializeApp);
+  } else {
+    initializeApp();
+  }
+
   if (!("hid" in navigator)) {
     $("#offlinebar").hide();
     $("#onlinebar").hide();
@@ -21,9 +61,11 @@ function gboot() {
 }
 
 async function connect() {
-  // Initialize controller manager
-  controller = initControllerManager();
+  controller = initControllerManager({ handleNvStatusUpdate });
   controller.setInputHandler(handleControllerInput);
+
+  reset_circularity_mode();
+  await sleep(200);
 
   try {
     $("#btnconnect").prop("disabled", true);
@@ -32,7 +74,7 @@ async function connect() {
 
     const supportedModels = ControllerFactory.getSupportedModels();
     const requestParams = { filters: supportedModels };
-    let devices = await navigator.hid.getDevices(); // Already connected?
+    let devices = await navigator.hid.getDevices();
     if (devices.length == 0) {
       devices = await navigator.hid.requestDevice(requestParams);
     }
@@ -44,11 +86,11 @@ async function connect() {
     }
 
     if (devices.length > 1) {
-      infoAlert("Please connect only one controller at a time.");
-      $("#btnconnect").prop("disabled", false);
-      $("#connectspinner").hide();
-      await disconnect();
-      return;
+        alert("Please connect only one controller at time.");
+        $("#btnconnect").prop("disabled", false);
+        $("#connectspinner").hide();
+        await disconnect();
+        return;
     }
 
     const [device] = devices;
@@ -75,37 +117,50 @@ async function continue_connection({data, device}) {
       return;
     }
 
-    // Check for proper USB connection (report length should be 63 bytes)
     const reportLen = data.byteLength;
     if(reportLen != 63) {
-      infoAlert("The device is connected via Bluetooth. Disconnect and reconnect using a USB cable instead.");
+      alert("The device is connected via Bluetooth. Disconnect and reconnect using a USB cable instead.");
       await disconnect();
       return;
     }
 
-    // Create controller instance using factory
-    const controllerInstance = ControllerFactory.createControllerInstance(device);
-    controller.setControllerInstance(controllerInstance);
+    let controllerInstance = null;
+    let info = null;
 
-    const info = await controllerInstance.getInfo();
+    try {
+      controllerInstance = ControllerFactory.createControllerInstance(device);
+      controller.setControllerInstance(controllerInstance);
+
+      info = await controllerInstance.getInfo();
+
+      if (controllerInstance.initializeCurrentOutputState) {
+        await controllerInstance.initializeCurrentOutputState();
+      }
+    } catch (error) {
+      const contextMessage = device
+        ? `Connected invalid device: ${dec2hex(device.vendorId)}:${dec2hex(device.productId)}`
+        : "Failed to connect to device";
+        throw new Error(contextMessage, { cause: error });
+    }
 
     if(!info?.ok) {
       if(info) console.error(JSON.stringify(info, null, 2));
-      throw new Error(`Connected invalid device: Error 1`, { cause: info?.error });
+      throw new Error(`Connected invalid device: Error  1`, { cause: info?.error });
     }
 
-    // Assign input processor for stream
+    console.log("Setting input report handler.");
     device.oninputreport = controller.getInputHandler();
 
     const deviceName = ControllerFactory.getDeviceName(device.productId);
-    $("#devname").text(deviceName + " (" + device.vendorId.toString(16).padStart(4, '0') + ":" + device.productId.toString(16).padStart(4, '0') + ")");
+    $("#devname").text(deviceName + " (" + dec2hex(device.vendorId) + ":" + dec2hex(device.productId) + ")");
 
     $("#offlinebar").hide();
     $("#onlinebar").show();
     $("#mainmenu").show();
 
-    // Initialize SVG controller based on model
-    await init_svg_controller(controllerInstance.getModel());
+    const model = controllerInstance.getModel();
+
+    await init_svg_controller(model);
 
   } catch(err) {
     await disconnect();
@@ -129,7 +184,6 @@ async function disconnect() {
   $("#mainmenu").hide();
 }
 
-// Wrapper function for HTML onclick handlers
 function disconnectSync() {
   disconnect().catch(error => {
     throw new Error("Failed to disconnect", { cause: error });
@@ -144,7 +198,6 @@ async function handleDisconnectedDevice(e) {
 async function init_svg_controller(model) {
   const svgContainer = document.getElementById('controller-svg-placeholder');
 
-  // Determine which SVG to load based on controller model
   let svgFileName;
   if (model === 'DS4') {
     svgFileName = 'dualshock-controller.svg';
@@ -154,12 +207,13 @@ async function init_svg_controller(model) {
     throw new Error(`Unknown controller model: ${model}`);
   }
 
-  // Fetch SVG content from server
+  let svgContent;
+
   const response = await fetch(`assets/${svgFileName}`);
   if (!response.ok) {
     throw new Error(`Failed to load controller SVG: ${svgFileName}`);
   }
-  const svgContent = await response.text();
+  svgContent = await response.text();
 
   svgContainer.innerHTML = svgContent;
 
@@ -179,6 +233,32 @@ async function init_svg_controller(model) {
   });
 }
 
+function collectCircularityData(stickStates, leftData, rightData) {
+  const { left, right  } = stickStates || {};
+  const MAX_N = CIRCULARITY_DATA_SIZE;
+
+  for(const [stick, data] of [[left, leftData], [right, rightData]]) {
+    if (!stick) return;
+
+    const { x, y } = stick;
+    const distance = Math.sqrt(x * x + y * y);
+    const angleIndex = (parseInt(Math.round(Math.atan2(y, x) * MAX_N / 2.0 / Math.PI)) + MAX_N) % MAX_N;
+    const oldValue = data[angleIndex] ?? 0;
+    data[angleIndex] = Math.max(oldValue, distance);
+  }
+}
+
+function clear_circularity() {
+  ll_data.fill(0);
+  rr_data.fill(0);
+}
+
+function reset_circularity_mode() {
+  clear_circularity();
+  $("#normalMode").prop('checked', true);
+  refresh_stick_pos();
+}
+
 function refresh_stick_pos() {
   if(!controller) return;
 
@@ -192,18 +272,16 @@ function refresh_stick_pos() {
 
   const { left: { x: plx, y: ply }, right: { x: prx, y: pry } } = controller.button_states.sticks;
 
-  const enable_zoom_center = false;
-  const enable_circ_test = false;
-  
-  // Draw left stick
+  const enable_zoom_center = center_zoom_checked();
+  const enable_circ_test = circ_checked();
+
   draw_stick_position(ctx, hb, yb, sz, plx, ply, {
-    circularity_data: enable_circ_test ? new Array(CIRCULARITY_DATA_SIZE).fill(0) : null,
+    circularity_data: enable_circ_test ? ll_data : null,
     enable_zoom_center,
   });
 
-  // Draw right stick
   draw_stick_position(ctx, w-hb, yb, sz, prx, pry, {
-    circularity_data: enable_circ_test ? new Array(CIRCULARITY_DATA_SIZE).fill(0) : null,
+    circularity_data: enable_circ_test ? rr_data : null,
     enable_zoom_center,
   });
 
@@ -213,42 +291,55 @@ function refresh_stick_pos() {
   $("#rx-lbl").text(float_to_str(prx, precision));
   $("#ry-lbl").text(float_to_str(pry, precision));
 
-  // Move L3 and R3 SVG elements according to stick position
   try {
     switch(controller.getModel()) {
       case "DS4":
-        updateSvgStickPosition('ds4', plx, ply, prx, pry);
+        const ds4_max_stick_offset = 25;
+        const ds4_l3_cx = 295.63, ds4_l3_cy = 461.03;
+        const ds4_r3_cx = 662.06, ds4_r3_cy = 419.78;
+
+        const ds4_l3_x = ds4_l3_cx + plx * ds4_max_stick_offset;
+        const ds4_l3_y = ds4_l3_cy + ply * ds4_max_stick_offset;
+        const ds4_l3_group = document.querySelector('g#L3');
+        ds4_l3_group?.setAttribute('transform', `translate(${ds4_l3_x - ds4_l3_cx},${ds4_l3_y - ds4_l3_cy})`);
+
+        const ds4_r3_x = ds4_r3_cx + prx * ds4_max_stick_offset;
+        const ds4_r3_y = ds4_r3_cy + pry * ds4_max_stick_offset;
+        const ds4_r3_group = document.querySelector('g#R3');
+        ds4_r3_group?.setAttribute('transform', `translate(${ds4_r3_x - ds4_r3_cx},${ds4_r3_y - ds4_r3_cy})`);
         break;
       case "DS5":
       case "DS5_Edge":
-        updateSvgStickPosition('ds5', plx, ply, prx, pry);
+        const ds5_max_stick_offset = 25;
+        const ds5_l3_cx = 295.63, ds5_l3_cy = 461.03;
+        const ds5_r3_cx = 662.06, ds5_r3_cy = 419.78;
+
+        const ds5_l3_x = ds5_l3_cx + plx * ds5_max_stick_offset;
+        const ds5_l3_y = ds5_l3_cy + ply * ds5_max_stick_offset;
+        const ds5_l3_group = document.querySelector('g#L3');
+        ds5_l3_group?.setAttribute('transform', `translate(${ds5_l3_x - ds5_l3_cx},${ds5_l3_y - ds5_l3_cy}) scale(0.70)`);
+
+        const ds5_r3_x = ds5_r3_cx + prx * ds5_max_stick_offset;
+        const ds5_r3_y = ds5_r3_cy + pry * ds5_max_stick_offset;
+        const ds5_r3_group = document.querySelector('g#R3');
+        ds5_r3_group?.setAttribute('transform', `translate(${ds5_r3_x - ds5_r3_cx},${ds5_r3_y - ds5_r3_cy}) scale(0.70)`);
         break;
       default:
-        return; // Unsupported model, skip
+        return;
     }
   } catch (e) {
-    // Fail silently if SVG not present
   }
 }
 
-function updateSvgStickPosition(controllerType, plx, ply, prx, pry) {
-  // These values are tuned for the SVG's coordinate system and visual effect
-  const max_stick_offset = 25;
-  
-  // L3 center coordinates depend on controller type
-  const l3_cx = 295.63, l3_cy = 461.03;
-  const r3_cx = 662.06, r3_cy = 419.78;
+const circ_checked = () => $("#checkCircularityMode").is(':checked');
+const center_zoom_checked = () => $("#centerZoomMode").is(':checked');
 
-  const l3_x = l3_cx + plx * max_stick_offset;
-  const l3_y = l3_cy + ply * max_stick_offset;
-  const l3_group = document.querySelector('g#L3');
-  l3_group?.setAttribute('transform', `translate(${l3_x - l3_cx},${l3_y - l3_cy})${controllerType === 'ds5' ? ' scale(0.70)' : ''}`);
-
-  const r3_x = r3_cx + prx * max_stick_offset;
-  const r3_y = r3_cy + pry * max_stick_offset;
-  const r3_group = document.querySelector('g#R3');
-  r3_group?.setAttribute('transform', `translate(${r3_x - r3_cx},${r3_y - r3_cy})${controllerType === 'ds5' ? ' scale(0.70)' : ''}`);
+function resetStickDiagrams() {
+  clear_circularity();
+  refresh_stick_pos();
 }
+
+const on_stick_mode_change = () => resetStickDiagrams();
 
 const throttled_refresh_sticks = (() => {
   let delay = null;
@@ -266,7 +357,7 @@ const throttled_refresh_sticks = (() => {
 
 const update_stick_graphics = (changes) => throttled_refresh_sticks(changes);
 
-function update_battery_status({bat_txt, changed}) {
+function update_battery_status({ bat_txt, changed }) {
   if(changed) {
     $("#d-bat").html(bat_txt);
   }
@@ -277,20 +368,26 @@ function update_ds_button_svg(changes, BUTTON_MAP) {
 
   const pressedColor = '#1a237e';
 
-  // Update L2/R2 analog infill
   for (const trigger of ['l2', 'r2']) {
     const key = trigger + '_analog';
     if (changes.hasOwnProperty(key)) {
       const val = changes[key];
       const t = val / 255;
-      const color = `rgba(26, 35, 126, ${t})`;
+      const color = lerp_color('#ffffff', pressedColor, t);
       const svg = trigger.toUpperCase() + '_infill';
       const infill = document.getElementById(svg);
       set_svg_group_color(infill, color);
+
+      const percentage = Math.round((val / 255) * 100);
+      const percentageText = document.getElementById(trigger.toUpperCase() + '_percentage');
+      if (percentageText) {
+        percentageText.textContent = `${percentage} %`;
+        percentageText.setAttribute('opacity', percentage > 0 ? '1' : '0');
+        percentageText.setAttribute('fill', percentage < 35 ? pressedColor : 'white');
+      }
     }
   }
 
-  // Update dpad buttons
   for (const dir of ['up', 'right', 'down', 'left']) {
     if (changes.hasOwnProperty(dir)) {
       const pressed = changes[dir];
@@ -299,7 +396,6 @@ function update_ds_button_svg(changes, BUTTON_MAP) {
     }
   }
 
-  // Update other buttons
   for (const btn of BUTTON_MAP) {
     if (['up', 'right', 'down', 'left'].includes(btn.name)) continue;
     if (changes.hasOwnProperty(btn.name) && btn.svg) {
@@ -323,22 +419,56 @@ function set_svg_group_color(group, color) {
   }
 }
 
+let hasActiveTouchPoints = false;
+let trackpadBbox = undefined;
+
+function update_touchpad_circles(points) {
+  const hasActivePointsNow = points.some(pt => pt.active);
+  if(!hasActivePointsNow && !hasActiveTouchPoints) return;
+
+  const svg = document.getElementById('controller-svg');
+  const trackpad = svg?.querySelector('g#Trackpad_infill');
+  if (!trackpad) return;
+
+  trackpad.querySelectorAll('circle.ds-touch').forEach(c => c.remove());
+  hasActiveTouchPoints = hasActivePointsNow;
+  trackpadBbox = trackpadBbox ?? trackpad.querySelector('path')?.getBBox();
+
+  points.forEach((pt, idx) => {
+    if (!pt.active) return;
+    const RAW_W = 1920, RAW_H = 943;
+    const pointRadius = trackpadBbox.width * 0.05;
+    const cx = trackpadBbox.x + pointRadius + (pt.x / RAW_W) * (trackpadBbox.width - pointRadius*2);
+    const cy = trackpadBbox.y + pointRadius + (pt.y / RAW_H) * (trackpadBbox.height - pointRadius*2);
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('class', 'ds-touch');
+    circle.setAttribute('cx', cx);
+    circle.setAttribute('cy', cy);
+    circle.setAttribute('r', pointRadius);
+    circle.setAttribute('fill', idx === 0 ? '#2196f3' : '#e91e63');
+    circle.setAttribute('fill-opacity', '0.5');
+    circle.setAttribute('stroke', '#3399cc');
+    circle.setAttribute('stroke-width', '4');
+    trackpad.appendChild(circle);
+  });
+}
+
 function handleControllerInput({ changes, inputConfig, touchPoints, batteryStatus }) {
   const { buttonMap } = inputConfig;
 
+  collectCircularityData(changes.sticks, ll_data, rr_data);
   update_stick_graphics(changes);
   update_ds_button_svg(changes, buttonMap);
+  update_touchpad_circles(touchPoints);
+
   update_battery_status(batteryStatus);
 }
 
-function infoAlert(message) {
-  console.log("INFO:", message);
+function handleNvStatusUpdate(nv) {
 }
 
-// Export functions to global scope for HTML onclick handlers
 window.gboot = gboot;
 window.connect = connect;
 window.disconnect = disconnectSync;
 
-// Auto-initialize the application when the module loads
 gboot();

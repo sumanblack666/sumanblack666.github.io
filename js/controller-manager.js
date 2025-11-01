@@ -1,36 +1,22 @@
 'use strict';
 
-import { sleep, la } from './utils.js';
+import { sleep } from './utils.js';
 
-/**
-* Controller Manager - Manages the current controller instance and provides unified interface
-*/
 class ControllerManager {
   constructor(uiDependencies = {}) {
     this.currentController = null;
     this.handleNvStatusUpdate = uiDependencies.handleNvStatusUpdate;
-    this.has_changes_to_write = null; 
-    this.inputHandler = null; // Callback function for input processing
+    this.inputHandler = null;
 
-    // Button and stick states for UI updates
     this.button_states = {
-      // e.g. 'square': false, 'cross': false, ... 
       sticks: {
-        left: {
-          x: 0,
-          y: 0
-        },
-        right: {
-          x: 0,
-          y: 0
-        }
+        left: { x: 0, y: 0 },
+        right: { x: 0, y: 0 }
       }
     };
 
-    // Touch points for touchpad input
     this.touchPoints = [];
 
-    // Battery status tracking
     this.batteryStatus = {
       bat_txt: "",
       changed: false,
@@ -42,18 +28,10 @@ class ControllerManager {
     this._lastBatteryText = "";
   }
 
-  /**
-  * Set the current controller instance
-  * @param {BaseController} controller Controller instance
-  */
   setControllerInstance(instance) {
     this.currentController = instance;
   }
 
-  /**
-  * Get the current device (for backward compatibility)
-  * @returns {HIDDevice|null} Current device or null if none set
-  */
   getDevice() {
     return this.currentController?.getDevice() || null;
   }
@@ -67,44 +45,15 @@ class ControllerManager {
     return await this.currentController.getInfo();
   }
 
-  getFinetuneMaxValue() {
-    if (!this.currentController) return null;
-    return this.currentController.getFinetuneMaxValue();
-  }
-
-  /**
-  * Set input report handler on the underlying device
-  * @param {Function|null} handler Input report handler function or null to clear
-  */
   setInputReportHandler(handler) {
     if (!this.currentController) return;
     this.currentController.device.oninputreport = handler;
   }
 
-  /**
-  * Query NVS (Non-Volatile Storage) status
-  * @returns {Promise<Object>} NVS status object
-  */
   async queryNvStatus() {
     const nv = await this.currentController.queryNvStatus();
     this.handleNvStatusUpdate(nv);
     return nv;
-  }
-
-  /**
-  * Get in-memory module data (finetune data)
-  * @returns {Promise<Array>} Module data array
-  */
-  async getInMemoryModuleData() {
-    return await this.currentController.getInMemoryModuleData();
-  }
-
-  /**
-  * Write finetune data to controller
-  * @param {Array} data Finetune data array
-  */
-  async writeFinetuneData(data) {
-    await this.currentController.writeFinetuneData(data);
   }
 
   getModel() {
@@ -112,36 +61,14 @@ class ControllerManager {
     return this.currentController.getModel();
   }
 
-  /**
-   * Get the list of supported quick tests for the current controller
-   * @returns {Array<string>} Array of supported test types
-   */
-  getSupportedQuickTests() {
-    if (!this.currentController) {
-      return [];
-    }
-    return this.currentController.getSupportedQuickTests();
-  }
-
-  /**
-  * Check if a controller is connected
-  * @returns {boolean} True if controller is connected
-  */
   isConnected() {
     return this.currentController !== null;
   }
 
-  /**
-  * Set the input callback function
-  * @param {Function} callback - Function to call after processing input
-  */
   setInputHandler(callback) {
     this.inputHandler = callback;
   }
 
-  /**
-  * Disconnect the current controller
-  */
   async disconnect() {
     if (this.currentController) {
       await this.currentController.close();
@@ -149,300 +76,14 @@ class ControllerManager {
     }
   }
 
-  /**
-  * Update NVS changes status and UI
-  * @param {boolean} hasChanges Changes status
-  */
-  setHasChangesToWrite(hasChanges) {
-    if (hasChanges === this.has_changes_to_write)
-      return;
-
-    const saveBtn = $("#savechanges");
-    if (saveBtn.length > 0) {
-      saveBtn
-        .prop('disabled', !hasChanges)
-        .toggleClass('btn-success', hasChanges)
-        .toggleClass('btn-outline-secondary', !hasChanges);
-    }
-
-    this.has_changes_to_write = hasChanges;
-  }
-
-  // Unified controller operations that delegate to the current controller
-
-  /**
-  * Flash/save changes to the controller
-  */
-  async flash(progressCallback = null) {
-    this.setHasChangesToWrite(false);
-    return this.currentController.flash(progressCallback);
-  }
-
-  /**
-  * Reset the controller
-  */
-  async reset() {
-    await this.currentController.reset();
-  }
-
-  /**
-  * Unlock NVS (Non-Volatile Storage)
-  */
-  async nvsUnlock() {
-    await this.currentController.nvsUnlock();
-    await this.queryNvStatus(); // Refresh NVS status
-  }
-
-  /**
-  * Lock NVS (Non-Volatile Storage)
-  */
-  async nvsLock() {
-    const res = await this.currentController.nvsLock();
-    if (!res.ok) {
-      throw new Error("NVS Lock failed", { cause: res.error });
-    }
-
-    await this.queryNvStatus(); // Refresh NVS status
-    return res;
-  }
-
-  /**
-  * Begin stick calibration
-  */
-  async calibrateSticksBegin() {
-    const res = await this.currentController.calibrateSticksBegin();
-    if (!res.ok) {
-      throw new Error(`Stick calibration failed. ${res.error?.message}`, { cause: res.error });
-    }
-  }
-
-  /**
-  * Sample stick position during calibration
-  */
-  async calibrateSticksSample() {
-    const res = await this.currentController.calibrateSticksSample();
-    if (!res.ok) {
-      await sleep(500);
-      throw new Error("Stick calibration failed", { cause: res.error });
-    }
-  }
-
-  /**
-  * End stick calibration
-  */
-  async calibrateSticksEnd() {
-    const res = await this.currentController.calibrateSticksEnd();
-    if (!res.ok) {
-      await sleep(500);
-      throw new Error("Stick calibration failed", { cause: res.error });
-    }
-
-    this.setHasChangesToWrite(true);
-  }
-
-  /**
-  * Begin stick range calibration (for UI-driven calibration)
-  */
-  async calibrateRangeBegin() {
-    const res = await this.currentController.calibrateRangeBegin();
-    if (!res.ok) {
-      throw new Error(`Stick calibration failed. ${res.error?.message}`, { cause: res.error });
-    }
-  }
-
-  /**
-  * Handle range calibration on close
-  */
-  async calibrateRangeOnClose() {
-    const res = await this.currentController.calibrateRangeEnd();
-    if(res?.ok) {
-      this.setHasChangesToWrite(true);
-      return { success: true, message: "Range calibration completed" };
-    } else {
-      // Check if the error is code 3 (DS4/DS5) or codes 4/5 (DS5 Edge), which typically means 
-      // the calibration was already ended or the controller is not in range calibration mode
-      if (res?.code === 3 || res?.code === 4 || res?.code === 5) {
-        console.log("Range calibration end returned expected error code", res.code, "- treating as successful completion");
-        // This is likely not an error - the calibration may have already been completed
-        // or the user closed the window without starting calibration
-        return { success: true };
-      }
-
-      console.log("Range calibration end failed with unexpected error:", res);
-      await sleep(500);
-      const msg = res?.code ? (`Range calibration failed. Error ${res.code}`) : (`Range calibration failed. ${res?.error || ""}`);
-      return { success: false, message: msg, error: res?.error };
-    }
-  }
-
-  /**
-  * Full stick calibration process ("OLD" fully automated calibration)
-  * @param {Function} progressCallback - Callback function to report progress (0-100)
-  */
-  async calibrateSticks(progressCallback) {
-    try {
-      la("multi_calibrate_sticks");
-
-      progressCallback(20);
-      await this.calibrateSticksBegin();
-      progressCallback(30);
-
-      // Sample multiple times during the process
-      const sampleCount = 5;
-      for (let i = 0; i < sampleCount; i++) {
-        await sleep(100);
-        await this.calibrateSticksSample();
-
-        // Progress from 30% to 80% during sampling
-        const sampleProgress = 30 + ((i + 1) / sampleCount) * 50;
-        progressCallback(Math.round(sampleProgress));
-      }
-
-      progressCallback(90);
-      await this.calibrateSticksEnd();
-      progressCallback(100);
-
-      return { success: true, message: "Stick calibration completed" };
-    } catch (e) {
-      la("multi_calibrate_sticks_failed", {"r": e});
-      throw e;
-    }
-  }
-
-  /**
-   * Disable left adaptive trigger effects (DS5 only)
-   * @returns {Promise<Object>} Result object with success status and message
-   */
-  async disableLeftAdaptiveTrigger() {
-    if (!this.currentController) {
-      throw new Error("No controller connected");
-    }
-
-    // Check if the controller supports adaptive triggers (DS5 only)
-    if (this.getModel() !== "DS5") {
-      throw new Error("Adaptive triggers are only supported on DualSense controllers");
-    }
-
-    // Check if the controller has the disableLeftAdaptiveTrigger method
-    if (typeof this.currentController.disableLeftAdaptiveTrigger !== 'function') {
-      throw new Error("Controller does not support adaptive trigger control");
-    }
-
-    try {
-      const result = await this.currentController.disableLeftAdaptiveTrigger();
-      return result;
-    } catch (error) {
-      throw new Error("Failed to disable adaptive trigger", { cause: error });
-    }
-  }
-
-  /**
-   * Set left adaptive trigger with preset configurations (DS5 only)
-   * @param {string} preset - Preset name: 'light', 'medium', 'heavy', 'custom'
-   * @param {Object} customParams - Custom parameters for 'custom' preset {start, end, force}
-   * @returns {Promise<Object>} Result object with success status and message
-   */
-  async setAdaptiveTriggerPreset({left, right}/* , customParams = {} */) {
-    const presets = {
-      'off': { start: 0, end: 0, force: 0, mode: 'off' },
-      'light': { start: 10, end: 80, force: 150, mode: 'single'},
-      'medium': { start: 15, end: 100, force: 200, mode: 'single' },
-      'heavy': { start: 20, end: 120, force: 255, mode: 'single' },
-      // 'custom': customParams
-    };
-
-    if (!presets[left] || !presets[right]) {
-      throw new Error(`Invalid preset. Available presets: light, medium, heavy, custom. Got "${left}" and "${right}".`);
-    }
-
-    const leftPreset = presets[left];
-    const rightPreset = presets[right];
-
-    // if (preset === 'custom') {
-    //   // Validate custom parameters
-    //   if (typeof start !== 'number' || typeof end !== 'number' || typeof force !== 'number') {
-    //     throw new Error(l("Custom preset requires start, end, and force parameters"));
-    //   }
-    // }
-
-    return await this.currentController?.setAdaptiveTrigger(leftPreset, rightPreset);
-  }
-
-  /**
-   * Set vibration motors for haptic feedback (DS5 only)
-   * @param {Object} options - Vibration options
-   * @param {number} options.heavyLeft - Left motor intensity (0-255)
-   * @param {number} options.lightRight - Right motor intensity (0-255)
-   * @param {number} options.duration - Duration in milliseconds (optional)
-   * @param {Function} doneCb - Callback function called when vibration ends (optional)
-   */
-  async setVibration({heavyLeft, lightRight, duration = 0}, doneCb = ({success}) => {}) {
-    try {
-      await this.currentController.setVibration(heavyLeft, lightRight);
-
-      // If duration is specified, automatically turn off vibration after the duration
-      if (duration > 0) {
-        setTimeout(async () => {
-          if(!this.currentController) return doneCb({success: true});
-          await this.currentController.setVibration(0, 0); // Turn off vibration
-          doneCb({success: true});
-        }, duration);
-      }
-    } catch (error) {
-      if(!this.currentController) return; // the controller was unplugged
-      if(duration) doneCb({ success: false});
-      throw new Error("Failed to set vibration", { cause: error });
-    }
-  }
-
-  /**
-   * Test speaker tone (DS5 only)
-   * @param {number} duration - Duration in milliseconds (optional)
-   * @param {Function} doneCb - Callback function called when tone ends (optional)
-   * @param {string} output - Audio output destination: "speaker" (default) or "headphones" (optional)
-   */
-  async setSpeakerTone(duration = 1000, doneCb = ({success}) => {}, output = "speaker") {
-    try {
-      await this.currentController.setSpeakerTone(output);
-
-      // If duration is specified, automatically reset speaker after the duration
-      if (duration > 0) {
-        setTimeout(async () => {
-          if(!this.currentController) return doneCb({success: true});
-          // Reset speaker settings to default by calling setSpeakerTone with reset parameters
-          try {
-            if (this.currentController.resetSpeakerSettings) {
-              await this.currentController.resetSpeakerSettings();
-            }
-          } catch (resetError) {
-            console.warn("Failed to reset speaker settings:", resetError);
-          }
-          doneCb({success: true});
-        }, duration);
-      }
-    } catch (error) {
-      if(!this.currentController) return; // the controller was unplugged
-      if(duration) doneCb({ success: false});
-      throw new Error("Failed to set speaker tone", { cause: error });
-    }
-  }
-
-  /**
-  * Helper function to check if stick positions have changed
-  */
   _sticksChanged(current, newValues) {
     return current.left.x !== newValues.left.x || current.left.y !== newValues.left.y ||
     current.right.x !== newValues.right.x || current.right.y !== newValues.right.y;
   }
 
-  /**
-  * Generic button processing for DS4/DS5
-  * Records button states and returns changes
-  */
   _recordButtonStates(data, BUTTON_MAP, dpad_byte, l2_analog_byte, r2_analog_byte) {
     const changes = {};
 
-    // Stick positions (always at bytes 0-3)
     const [new_lx, new_ly, new_rx, new_ry] = [0, 1, 2, 3]
       .map(i => data.getUint8(i))
       .map(v => Math.round((v - 127.5) / 128 * 100) / 100);
@@ -457,7 +98,6 @@ class ControllerManager {
       changes.sticks = newSticks;
     }
 
-    // L2/R2 analog values
     [
       ['l2', l2_analog_byte],
       ['r2', r2_analog_byte]
@@ -470,7 +110,6 @@ class ControllerManager {
       }
     });
 
-    // Dpad is a 4-bit hat value
     const hat = data.getUint8(dpad_byte) & 0x0F;
     const dpad_map = {
       up:    (hat === 0 || hat === 1 || hat === 7),
@@ -486,9 +125,8 @@ class ControllerManager {
       }
     }
 
-    // Other buttons
     for (const btn of BUTTON_MAP) {
-      if (['up', 'right', 'down', 'left'].includes(btn.name)) continue; // Dpad handled above
+      if (['up', 'right', 'down', 'left'].includes(btn.name)) continue;
       const pressed = (data.getUint8(btn.byte) & btn.mask) !== 0;
       if (this.button_states[btn.name] !== pressed) {
         this.button_states[btn.name] = pressed;
@@ -499,12 +137,6 @@ class ControllerManager {
     return changes;
   }
 
-  /**
-  * Process controller input data and call callback if set
-  * This is the first part of the split process_controller_input function
-  * @param {Object} inputData - The input data from the controller
-  * @returns {Object} Changes object containing processed input data
-  */
   processControllerInput(inputData) {
     const { data } = inputData;
 
@@ -512,15 +144,12 @@ class ControllerManager {
     const { buttonMap, dpadByte, l2AnalogByte, r2AnalogByte } = inputConfig;
     const { touchpadOffset } = inputConfig;
 
-    // Process button states using the device-specific configuration
     const changes = this._recordButtonStates(data, buttonMap, dpadByte, l2AnalogByte, r2AnalogByte);
 
-    // Parse and store touch points if touchpad data is available
     if (touchpadOffset) {
       this.touchPoints = this._parseTouchPoints(data, touchpadOffset);
     }
 
-    // Parse and store battery status
     this.batteryStatus = this._parseBatteryStatus(data);
 
     const result = {
@@ -533,26 +162,16 @@ class ControllerManager {
     this.inputHandler(result);
   }
 
-  /**
-  * Parse touch points from input data
-  * @param {DataView} data - Input data view
-  * @param {number} offset - Offset to touchpad data
-  * @returns {Array} Array of touch points with {active, id, x, y} properties
-  */
   _parseTouchPoints(data, offset) {
-    // Returns array of up to 2 points: {active, id, x, y}
     const points = [];
     for (let i = 0; i < 2; i++) {
       const base = offset + i * 4;
-      const arr = [];
-      for (let j = 0; j < 4; j++) arr.push(data.getUint8(base + j));
       const b0 = data.getUint8(base);
-      const active = (b0 & 0x80) === 0; // 0 = finger down, 1 = up
+      const active = (b0 & 0x80) === 0;
       const id = b0 & 0x7F;
       const b1 = data.getUint8(base + 1);
       const b2 = data.getUint8(base + 2);
       const b3 = data.getUint8(base + 3);
-      // x: 12 bits, y: 12 bits
       const x = ((b2 & 0x0F) << 8) | b1;
       const y = (b3 << 4) | (b2 >> 4);
       points.push({ active, id, x, y });
@@ -560,9 +179,6 @@ class ControllerManager {
     return points;
   }
 
-  /**
-  * Parse battery status from input data
-  */
   _parseBatteryStatus(data) {
     const batteryInfo = this.currentController.parseBatteryStatus(data);
     const bat_txt = this._batteryPercentToText(batteryInfo);
@@ -573,41 +189,18 @@ class ControllerManager {
     return { bat_txt, changed, ...batteryInfo };
   }
 
-  /**
-  * Convert battery percentage to display text with icons
-  */
   _batteryPercentToText({bat_capacity, is_charging, is_error}) {
     if (is_error) {
-      return '<font color="red">error</font>';
+      return 'error';
     }
-
-    const batteryIcons = [
-      { threshold: 20, icon: 'fa-battery-empty' },
-      { threshold: 40, icon: 'fa-battery-quarter' },
-      { threshold: 60, icon: 'fa-battery-half' },
-      { threshold: 80, icon: 'fa-battery-three-quarters' },
-    ];
-
-    const icon_txt = batteryIcons.find(item => bat_capacity < item.threshold)?.icon || 'fa-battery-full';
-    const icon_full = `<i class="fa-solid ${icon_txt}"></i>`;
-    const bolt_txt = is_charging ? '<i class="fa-solid fa-bolt"></i>' : '';
-    return [`${bat_capacity}%`, icon_full, bolt_txt].join(' ');
+    return `${bat_capacity}% ${is_charging ? 'charging' : ''}`;
   }
 
-  /**
-  * Get a bound input handler function that can be assigned to device.oninputreport
-  * @returns {Function} Bound input handler function
-  */
   getInputHandler() {
     return this.processControllerInput.bind(this);
   }
 }
 
-// Function to initialize the controller manager with dependencies
 export function initControllerManager(dependencies = {}) {
-  const self = new ControllerManager(dependencies);
-
-  // This disables the save button until something actually changes
-  self.setHasChangesToWrite(false);
-  return self;
+  return new ControllerManager(dependencies);
 }
