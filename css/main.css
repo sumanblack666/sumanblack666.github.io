@@ -1,0 +1,115 @@
+/* Main styles for Minimal DualShock Controller Tool */
+
+/* Add padding to body to prevent content from being hidden behind fixed footer */
+body {
+  padding-bottom: 80px;
+}
+
+dl.row dt {
+  font-weight: normal;
+}
+
+dl.row dd {
+  font-family: monospace;
+}
+
+/* Controller SVG styling */
+#controller-svg-placeholder svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Joystick display styling */
+#stickCanvas {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f8f9fa;
+}
+
+/* Alert styles */
+.alert {
+  margin-bottom: 10px;
+}
+
+/* Navbar customizations */
+.navbar-brand {
+  font-weight: 600;
+}
+
+/* Card styling */
+.card {
+  border: 1px solid rgba(0,0,0,.125);
+  border-radius: 0.375rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.card-header {
+  background-color: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.125);
+  font-weight: 600;
+}
+
+/* Loading spinner */
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .col-md-6 {
+    margin-bottom: 1rem;
+  }
+  
+  #stickCanvas {
+    width: 100%;
+    max-width: 300px;
+  }
+}
+
+/* SVG button states */
+svg path, svg rect, svg circle, svg ellipse, svg line, svg polyline, svg polygon {
+  transition: fill 0.10s, stroke 0.10s;
+}
+
+/* Touch point circles in SVG */
+.ds-touch {
+  pointer-events: none;
+}
+
+/* Value displays */
+pre {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  background-color: rgba(0,0,0,.05);
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  margin: 0;
+}
+
+/* Footer styling */
+.fixed-bottom {
+  z-index: 1030;
+}
+
+/* Container padding adjustments */
+.container {
+  max-width: 1200px;
+}
+
+/* Status indicators */
+.badge {
+  font-size: 0.75rem;
+}
+
+/* Connection status styling */
+#devname {
+  font-family: monospace;
+  font-weight: bold;
+  color: #198754;
+}
+
+#d-bat {
+  font-family: monospace;
+  font-weight: bold;
+}
