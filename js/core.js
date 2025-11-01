@@ -1,6 +1,6 @@
 'use strict';
 
-import { sleep, float_to_str, dec2hex } from './utils.js';
+import { sleep, float_to_str, dec2hex, lerp_color } from './utils.js';
 import { initControllerManager } from './controller-manager.js';
 import ControllerFactory from './controllers/controller-factory.js';
 import { draw_stick_position, CIRCULARITY_DATA_SIZE } from './stick-renderer.js';
